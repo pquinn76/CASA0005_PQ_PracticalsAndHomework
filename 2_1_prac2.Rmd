@@ -1,0 +1,355 @@
+#prac2 - INCOMPLETE
+
+## data input
+
+### install packages
+```{r}
+install.packages("here")
+install.packages("plotly")
+install.packages("RTools")
+install.packages("maptools")
+install.packages(c("classInt", "tmap"))
+install.packages(c("RColorBrewer", "sp", "rgeos", 
+                   "tmaptools", "sf", "downloader", "rgdal", 
+                   "geojsonio"))
+```
+
+### load packages
+```{r}
+library(sf)
+library(tmap) 
+library(tmaptools)
+library(RSQLite)
+library(tidyverse)
+library(dplyr)
+library(here)
+library(janitor)
+library(readr)
+library(plotly)
+library(maptools)
+library(RColorBrewer)
+library(classInt)
+library(sp)
+library(rgeos)
+library(tmap)
+library(tmaptools)
+library(sf)
+library(rgdal)
+library(geojsonio)
+```
+
+### read in the csv OSC
+
+```{r}
+LondonDataOSC<- read.csv("2_1_prac2_data/ward-profiles-excel-version.csv", 
+                         header = FALSE, 
+                         sep = ",",  
+                         encoding = "latin1")
+```
+
+### read in the csv
+
+```{r}
+LondonData <- read_csv("https://data.london.gov.uk/download/ward-profiles-and-atlas/772d2d64-e8c6-46cb-86f9-e52b4c7851bc/ward-profiles-excel-version.csv", 
+                       locale = locale(encoding = "latin1"))
+```
+
+### read in the csv and clean
+
+```{r}
+LondonData <- read_csv("https://data.london.gov.uk/download/ward-profiles-and-atlas/772d2d64-e8c6-46cb-86f9-e52b4c7851bc/ward-profiles-excel-version.csv",
+                       locale = locale(encoding = "latin1"),
+                       na = "n/a")
+```
+### view the .csv
+```{r}
+LondonData 
+```
+### examine the data type
+
+```{r}
+class(LondonData)
+```
+### check the data has been read in correctly
+
+```{r}
+Datatypelist <- LondonData %>% 
+  summarise_all(class) %>%
+  pivot_longer(everything(), 
+               names_to="All_variables", 
+               values_to="Variable_class")
+
+Datatypelist
+```
+
+### view the column headers
+
+```{r}
+LondonData%>%
+  colnames()%>%
+  # just look at the head, top5
+  head()
+```
+
+## data wrangling
+
+### selecting the data subset needed
+```{r}
+LondonBoroughs<-LondonData[626:658,]
+```
+
+### or slicing the data subset needed
+```{r}
+LondonBoroughs<-LondonData%>%
+  slice(626:658)
+```
+
+### filter based on a variable - female life expectancy greater than 90
+```{r}
+Femalelifeexp<- LondonData %>% 
+  filter(`Female life expectancy -2009-13`>90)
+```
+
+### or fliter with stringer when data is charachter not numeric
+```{r}
+LondonBoroughs<- LondonData %>% 
+  filter(str_detect(`New code`, "^E09"))
+```
+
+### check it worked
+
+```{r}
+LondonBoroughs$`Ward name`
+```
+
+### make the rows distinct
+
+```{r}
+LondonBoroughs<-LondonBoroughs %>%
+  distinct()
+```
+
+### selecting columns
+```{r}
+LondonBoroughs_manualcols<-LondonBoroughs[,c(1,19,20,21)]
+```
+
+### alternative way using dplyr with select()
+```{r}
+LondonBoroughs_dplyrcols<-LondonBoroughs %>%
+  dplyr::select(c(1,19,20,21))
+```
+
+### selecting columns using words
+```{r}
+LondonBoroughs_dplyrcols<-LondonBoroughs %>%
+LondonBoroughs_contains<-LondonBoroughs %>% 
+  dplyr::select(contains("expectancy"), 
+         contains("obese - 2011/12 to 2013/14"),
+         contains("Ward name")) 
+```
+### tidying up column names
+```{r}
+LondonBoroughs <- LondonBoroughs %>%
+  dplyr::rename(Borough=`Ward name`)%>%
+  clean_names()
+```
+
+### using mutate to add new variables based on existing ones
+```{r}
+Life_expectancy <- LondonBoroughs %>% 
+  #new column with average of male and female life expectancy
+  mutate(averagelifeexpectancy= (female_life_expectancy_2009_13 +
+                                    male_life_expectancy_2009_13)/2)%>%
+  #new column with normalised life expectancy
+  mutate(normalisedlifeepectancy= averagelifeexpectancy /
+           mean(averagelifeexpectancy))%>%
+  #select only columns we want
+  dplyr::select(new_code,
+         borough,
+         averagelifeexpectancy, 
+         normalisedlifeepectancy)%>%
+  #arrange in descending order
+  #ascending is the default and would be
+  #arrange(normalisedlifeepectancy)
+  arrange(desc(normalisedlifeepectancy))
+```
+
+### use dplyr to show us the top and bottom number of rows
+```{r}
+#top of data
+slice_head(Life_expectancy, n=5)
+
+#bottom of data
+slice_tail(Life_expectancy,n=5)
+```
+
+### use case_when(), to assign a new string depending on if the value is above or below the national average
+```{r}
+Life_expectancy2 <- Life_expectancy %>%
+  mutate(UKcompare = case_when(averagelifeexpectancy>81.16 ~ "above UK average",
+                               TRUE ~ "below UK average"))
+Life_expectancy2
+```
+### identifying the range of life expectancies
+```{r}
+Life_expectancy2_group <- Life_expectancy2 %>%
+  mutate(UKdiff = averagelifeexpectancy-81.16) %>%
+  group_by(UKcompare)%>%
+  summarise(range=max(UKdiff)-min(UKdiff), count=n(), Average=mean(UKdiff))
+
+Life_expectancy2_group
+```
+
+### using across() that applies a kind of transformation across the columns selected
+```{r}
+Life_expectancy3 <- Life_expectancy %>%
+  mutate(UKdiff = averagelifeexpectancy-81.16)%>%
+  mutate(across(where(is.numeric), round, 3))%>%
+  mutate(across(UKdiff, round, 0))%>%
+  mutate(UKcompare = case_when(averagelifeexpectancy >= 81 ~ 
+                                 str_c("equal or above UK average by",
+                                       UKdiff, 
+                                       "years", 
+                                       sep=" "), 
+                               TRUE ~ str_c("below UK average by",
+                                            UKdiff,
+                                            "years",
+                                            sep=" ")))%>%
+  group_by(UKcompare)%>%
+  summarise(count=n())
+```
+
+### getting the average life expectancy of each London Borough compared to the UK average
+```{r}
+Life_expectancy4 <- Life_expectancy %>%
+  mutate(UKdiff = averagelifeexpectancy-81.16)%>%
+  mutate(across(is.numeric, round, 3))%>%
+  mutate(across(UKdiff, round, 0))
+```
+## plotting
+
+### a simple quick plot
+```{r}
+plot(LondonBoroughs$male_life_expectancy_2009_13,
+     LondonBoroughs$percent_children_in_reception_year_who_are_obese_2011_12_to_2013_14)
+```
+
+### using ploty to enhance the graphics of the graph
+```{r}
+plot_ly(LondonBoroughs, 
+        #data for x axis
+        x = ~male_life_expectancy_2009_13, 
+        #data for y axis
+        y = ~percent_children_in_reception_year_who_are_obese_2011_12_to_2013_14, 
+        #attribute to display when hovering 
+        text = ~borough, 
+        type = "scatter", 
+        mode = "markers")
+```
+
+## mapping
+
+### read in the shape file
+```{r}
+EW <- st_read(here::here("2_1_prac2_data","LAD_Dec_2015_GCB_GB.shp"))
+```
+
+### see a summary of the shape data
+```{r}
+summary(EW)
+```
+
+### view the shape file
+```{r}
+plot(EW)
+```
+
+### pull out the london boundaries using str_detect in combination with filter
+```{r}
+LondonMap<- EW %>%
+  filter(str_detect(lad15cd, "^E09"))
+```
+
+
+### plot the london map
+```{r}
+qtm(LondonMap)
+```
+
+## joining
+
+### join the data
+```{r}
+  shape2 <- shape_simple%>%
+  merge(.,
+        employed_2018,
+        by.x="TA2018_V_1", 
+        by.y="Area_Description")
+```
+
+### option to join on the id by making the column numeric
+```{r}
+shape3 <- shape_simple %>%
+  mutate(TA2018_V1_=(as.numeric(TA2018_V1_)))%>%
+  merge(.,
+        employed_2018,
+        by.x="TA2018_V1_", 
+        by.y="Area_Code")
+```
+
+### check the join
+```{r}
+shape3%>%  
+head(., n=10)
+```
+
+## data mapping
+
+### set tmap to plot  
+```{r}
+  library(tmap)
+tmap_mode("plot")
+```
+
+### view the map
+```{r}
+shape2 %>%
+qtm(.,fill = "Paid employee")
+```
+
+### write a .gpkg
+```{r}
+shape %>%
+  st_write(.,"N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_2_hmwk1/hmwk1_outputs/hmwk1.gpkg","2018_paid_employee",
+           delete_layer=TRUE)
+```
+
+### connect to the .gpkg
+```{r}
+library(readr)
+library(RSQLite)
+con <- dbConnect(RSQLite::SQLite(),dbname="N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_2_hmwk1/hmwk1_outputs/hmwk1.gpkg")
+```
+
+### list contents of .gpkg
+```{r}
+con %>%
+  dbListTables()
+```
+
+### add the original .csv
+```{r}
+con %>%
+  dbWriteTable(.,
+               "original_csv",
+               employed_2018,
+               overwrite=TRUE)
+```
+
+### disconnect from .gpkg
+```{r}
+con %>% 
+  dbDisconnect()
+```
+

@@ -1,0 +1,101 @@
+
+## load packages
+```{r}
+library(sf)
+library(tmap) 
+library(tmaptools)
+library(RSQLite)
+library(tidyverse)
+```
+
+## read in the shape file
+```{r}
+library(sf)
+shape <- st_read("1_1_prac1_data/statistical-gis-boundaries-london/statistical-gis-boundaries-london/ESRI/London_Borough_Excluding_MHW.shp")
+```
+
+## see a summary of the shape data
+```{r}
+summary(shape)
+```
+
+## view the shape file
+```{r}
+plot(shape)
+```
+
+## view the geometry
+```{r}
+library(sf)
+shape %>% 
+  st_geometry() %>%
+  plot()
+```
+
+## read in the csv
+```{r}
+library(tidyverse)
+  mycsv <-  read_csv("N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_1_prac1_data/fly_tipping_borough.csv")
+```
+
+## join the data
+```{r}
+  shape <- shape%>%
+  merge(.,
+        mycsv,
+        by.x="GSS_CODE", 
+        by.y="Row Labels")
+```
+
+## check the join
+```{r}
+shape%>%
+head(., n=10)
+```
+
+## set tmap to plot  
+```{r}
+  library(tmap)
+tmap_mode("plot")
+```
+
+## view the map
+```{r}
+shape %>%
+qtm(.,fill = "2011-12")
+```
+
+## write a .gpkg
+```{r}
+shape %>%
+  st_write(.,"N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_1_prac1_outputs/prac1.gpkg","london_boroughs_fly_tipping",
+           delete_layer=TRUE)
+```
+
+## connect to the .gpkg
+```{r}
+library(readr)
+library(RSQLite)
+con <- dbConnect(RSQLite::SQLite(),dbname="N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_1_prac1_outputs/prac1.gpkg")
+```
+
+## list contents of .gpkg
+```{r}
+con %>%
+  dbListTables()
+```
+
+## add the original .csv
+```{r}
+con %>%
+  dbWriteTable(.,
+               "original_csv",
+               mycsv,
+               overwrite=TRUE)
+```
+
+## disconnect from .gpkg
+```{r}
+con %>% 
+  dbDisconnect()
+```
