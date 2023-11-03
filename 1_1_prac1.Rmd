@@ -1,3 +1,12 @@
+#prac1
+
+## task
+By the end of this practical you should be able to:
+
+Describe and explain GIS data formats and databases
+Source and pre-process spatial data
+Load and undertaken some basic manipulation of spatial data in QGIS and R
+Evaluate the (dis)advantages of each GIS you have used
 
 ## load packages
 ```{r}

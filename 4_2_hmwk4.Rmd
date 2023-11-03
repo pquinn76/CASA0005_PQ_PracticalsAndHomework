@@ -1,5 +1,16 @@
 #hmwk4
 
+## task
+The task this week is to:
+
+Read in global gender inequality data
+Join the global gender inequality index to spatial data of the World, creating a new column of difference in inequality between 2010 and 2019
+Share it with the World on GitHub
+Add you repository URL to the circulated spreadsheet
+Tip the countrycode R package will be helpful!
+
+Tip the gender inequality has changed in the last year, you will find what you need in the “All composite indices and components time series (1990-2021)” dataset, the metadata file beneath it will explain what the columns are.
+
 ## data input
 
 ### install packages

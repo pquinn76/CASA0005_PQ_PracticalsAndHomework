@@ -1,4 +1,15 @@
-#hmwk2 - INCOMPLETE
+#hmwk2
+
+## task
+The task is to join some non spatial data to some spatial data and wrangle it.
+
+You need calcuate the average percent of science students (in all) grades per county meeting the required standards and produce a map to show where the Country averages are above or below the State of Washington average.
+
+Download Washing Counties
+
+Download school report card data
+
+Tip do not try and pull out the number from the % symbol, you have the count of students who expected to test and the count who met standard, so you can calculate the percentage.
 
 ## data input
 
@@ -10,142 +21,125 @@
 ### load packages
 ```{r}
 library(sf)
-library(tmap) 
-library(tmaptools)
-library(RSQLite)
 library(tidyverse)
 library(here)
+library(janitor)
+library(tmap) 
 ```
 
-### read in the csv
+### read in the csv and remove null as no data
 ```{r}
-
+report <- read_csv(here::here("2_2_hmwk2_data", 
+                   "Report_Card_Assessment_Data_2018-19_School_Year_20231030.csv"),
+                              na= "NULL")
 ```
 
 ### view the .csv
 ```{r}
-mycsv 
-```
-
-## data manuipulation
-
-### added test to last row to make character for example
-```{r}
-
+report 
 ```
 
 ### read in the shape file
 ```{r}
-
+shape_hmwk2 <- st_read(here::here("2_2_hmwk2_data",                          "Washington_Counties_with_Natural_Shoreline___washsh_area",                           "Washington_Counties_with_Natural_Shoreline___washsh_area.shp"))
 ```
 
-### see a summary of the shape data
+## data wrangling - calculate the average percent of science students (in all) grades per county meeting the required standards 1 count met standard, 2 count expected to test, 3 test subject
+
+### wrangle 1 - summarise class and pivot longer 
 ```{r}
-summary(shape)
+Datatypelist <- report %>% 
+  summarise_all(class) %>%
+  pivot_longer(everything(), 
+               names_to="All_variables", 
+               values_to="Variable_class")
 ```
 
-### view the shape file
+### wrangle 1 - select columns: country, organisation_level subject, grade, count the met standard, count those tested. then filter for county to omit multiple, organisation level as school, test subject as science and all grade levels. clean up to remove n/as. then mutate to work out % that have met 
 ```{r}
-plot(shape)
+county_only <- report %>%
+  clean_names(.) %>%
+  select(county, organization_level, test_subject, count_met_standard, 
+         count_of_students_expected_to_test, grade_level)%>%
+  # the != means don't select this, but select everything else
+  # i could also filter on where 
+  filter(county != "Multiple")%>%
+  filter(organization_level == "School")%>%
+  filter(test_subject == "Science")%>%
+  filter(grade_level=="All Grades")%>%
+    group_by(county)%>%
+  # we need to remove NAs - note we can use this function or do it within the summarise below with the argument na.rm=T they do the same thing!
+  na.omit()%>%
+  # na.rm = T means remove missing values from the data
+  # could also use na.omit or filter greater than 0
+  summarise(total_county_met_standard=sum(count_met_standard), 
+            total_county_to_test=sum(count_of_students_expected_to_test))%>%
+  mutate(percent_met_per_county=(total_county_met_standard/total_county_to_test)*100)
 ```
 
-### view the shape geometry
+### wrangle 2 - to work out what the state average is by averaging the percent_met_per_county column from the county_only object
 ```{r}
-library(sf)
-shape %>% 
-  st_geometry() %>%
-  plot()
+state_average <- county_only%>%
+  mutate(sum_met=sum(total_county_met_standard))%>%
+  mutate(sum_to_test =sum(total_county_to_test))%>%
+  mutate(state_average=((sum_met/sum_to_test)*100))%>%
+  head(n=1)%>%
+  pull(state_average)
 ```
 
-### simplify geometry
+### wrangle 3 - compare the county average to the state average by subtracting the state average from each county average to work out which counties are above or below than the state average. make a new column that records which county is above or below and assign through case_when to identify this county by county
 ```{r}
-
+county_only_above_below_state <- county_only %>%
+  mutate(difference_to_state=(percent_met_per_county-state_average))%>%
+  mutate(across(difference_to_state , round, 0))%>%
+  mutate(above_below = case_when(difference_to_state<0 ~ "below",
+                                   difference_to_state>0 ~ "above",
+                                   difference_to_state==0 ~ "equal"
+                                   ))
 ```
 
-### view the shape_simple file
+## join the data
+
+### make a new object and left join the latest non-spatial data object made with the spatial data
 ```{r}
-plot(shape_simple)
+joined_data_hmwk2 <- shape_hmwk2 %>% 
+  clean_names(.) %>%
+  left_join(., 
+            county_only_above_below_state,
+            by = c("countylabe" = "county"))
 ```
 
-### view the shape_simple geometry
+### view the new joined data
 ```{r}
-library(sf)
-shape_simple %>% 
-  st_geometry() %>%
-  plot()
-```
-
-### join the data
-```{r}
-  shape2 <- shape_simple%>%
-  merge(.,
-        employed_2018,
-        by.x="TA2018_V_1", 
-        by.y="Area_Description")
-```
-
-### option to join on the id by making the column numeric
-```{r}
-shape3 <- shape_simple %>%
-  mutate(TA2018_V1_=(as.numeric(TA2018_V1_)))%>%
-  merge(.,
-        employed_2018,
-        by.x="TA2018_V1_", 
-        by.y="Area_Code")
-```
-
-### check the join
-```{r}
-shape3%>%  
-head(., n=10)
+joined_data_hmwk2
 ```
 
 ## data mapping
 
 ### set tmap to plot  
 ```{r}
-  library(tmap)
 tmap_mode("plot")
 ```
 
-### view the map
+### from the grammer of graphics, specify your spatial data and then add aesthetics
 ```{r}
-shape2 %>%
-qtm(.,fill = "Paid employee")
-```
+#bbox_county <- joined_data_hmwk2 %>%
+#  st_bbox(.) %>% 
+#  tmaptools::read_osm(., type = "osm", zoom = NULL)
 
-### write a .gpkg
-```{r}
-shape %>%
-  st_write(.,"N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_2_hmwk1/hmwk1_outputs/hmwk1.gpkg","2018_paid_employee",
-           delete_layer=TRUE)
-```
+#tm_shape(bbox_county)+
+#  tm_rgb()+
 
-### connect to the .gpkg
-```{r}
-library(readr)
-library(RSQLite)
-con <- dbConnect(RSQLite::SQLite(),dbname="N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_2_hmwk1/hmwk1_outputs/hmwk1.gpkg")
-```
-
-### list contents of .gpkg
-```{r}
-con %>%
-  dbListTables()
-```
-
-### add the original .csv
-```{r}
-con %>%
-  dbWriteTable(.,
-               "original_csv",
-               employed_2018,
-               overwrite=TRUE)
-```
-
-### disconnect from .gpkg
-```{r}
-con %>% 
-  dbDisconnect()
+  tm_shape(joined_data_hmwk2) + 
+  tm_polygons("above_below", 
+             # style="pretty",
+              palette="Blues",
+              midpoint=NA,
+              #title="Number of years",
+              alpha = 0.5) + 
+  tm_compass(position = c("left", "bottom"),type = "arrow") + 
+  tm_scale_bar(position = c("left", "bottom")) +
+  tm_layout(title = "Counties above or below state avearge for science in all grades", 
+            legend.position = c("right", "bottom"))
 ```
 

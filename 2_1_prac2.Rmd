@@ -1,4 +1,13 @@
-#prac2 - INCOMPLETE
+#prac2
+
+## task
+By the end of this practical you should be able to:
+
+Execute basic processing in R
+Examine, clean and manipulate comma seperate value (.csv) data
+Examine, clean and manipulate and plot spatial (.shp) data
+Produce interactive maps
+Evaluate the benefits of different data manipulation and mapping techniques
 
 ## data input
 
@@ -248,7 +257,7 @@ plot_ly(LondonBoroughs,
         mode = "markers")
 ```
 
-## mapping
+## spatial data input
 
 ### read in the shape file
 ```{r}
@@ -281,75 +290,52 @@ qtm(LondonMap)
 
 ### join the data
 ```{r}
-  shape2 <- shape_simple%>%
-  merge(.,
-        employed_2018,
-        by.x="TA2018_V_1", 
-        by.y="Area_Description")
+  BoroughDataMap2 <- EW %>% 
+  clean_names() %>%
+  filter(str_detect(lad15cd, "^E09"))%>%
+  left_join(., 
+            LondonData,
+            by = c("lad15cd" = "new_code"))
 ```
 
-### option to join on the id by making the column numeric
+### make the rows distinct
 ```{r}
-shape3 <- shape_simple %>%
-  mutate(TA2018_V1_=(as.numeric(TA2018_V1_)))%>%
-  merge(.,
-        employed_2018,
-        by.x="TA2018_V1_", 
-        by.y="Area_Code")
+BoroughDataMap2<-BoroughDataMap2 %>%
+  distinct()
 ```
 
-### check the join
-```{r}
-shape3%>%  
-head(., n=10)
-```
+## simple mapping
 
-## data mapping
-
-### set tmap to plot  
+### make a qtm from tmap  
 ```{r}
-  library(tmap)
+library(tmap)
+library(tmaptools)
 tmap_mode("plot")
+qtm(BoroughDataMap2, 
+    fill = "rate_of_job_seekers_allowance_jsa_claimants_2015")
 ```
 
-### view the map
+### adding a basemap
 ```{r}
-shape2 %>%
-qtm(.,fill = "Paid employee")
+tmaplondon <- BoroughDataMap2 %>%
+  st_bbox(.) %>% 
+  tmaptools::read_osm(., type = "osm", zoom = NULL)
 ```
 
-### write a .gpkg
+### make a map from tmap
 ```{r}
-shape %>%
-  st_write(.,"N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_2_hmwk1/hmwk1_outputs/hmwk1.gpkg","2018_paid_employee",
-           delete_layer=TRUE)
-```
+tmap_mode("plot")
 
-### connect to the .gpkg
-```{r}
-library(readr)
-library(RSQLite)
-con <- dbConnect(RSQLite::SQLite(),dbname="N:/Documents/CASA0005 Geographic Information Systems and Science/CASA0005_PQ_PracticalsAndHomework/1_2_hmwk1/hmwk1_outputs/hmwk1.gpkg")
+tm_shape(tmaplondon)+
+tm_rgb()+
+tm_shape(BoroughDataMap2) + 
+tm_polygons("rate_of_job_seekers_allowance_jsa_claimants_2015", 
+        style="pretty",
+        palette="YlOrBr",
+        midpoint=NA,
+        title="Rate per 1,000 people",
+        alpha = 0.5) + 
+  tm_compass(position = c("left", "bottom"),type = "arrow") + 
+  tm_scale_bar(position = c("left", "bottom")) +
+  tm_layout(title = "Job seekers' Allowance Claimants", legend.position = c("right", "bottom"))
 ```
-
-### list contents of .gpkg
-```{r}
-con %>%
-  dbListTables()
-```
-
-### add the original .csv
-```{r}
-con %>%
-  dbWriteTable(.,
-               "original_csv",
-               employed_2018,
-               overwrite=TRUE)
-```
-
-### disconnect from .gpkg
-```{r}
-con %>% 
-  dbDisconnect()
-```
-
